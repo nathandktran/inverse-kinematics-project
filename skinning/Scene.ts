@@ -1,3 +1,4 @@
+import { LessDepth } from "../lib/threejs/src/constants.js";
 import { epsilon, Mat4, Quat, Vec3, Vec4 } from "../lib/TSM.js";
 import { AttributeLoader, MeshGeometryLoader, BoneLoader, MeshLoader } from "./AnimationFileLoader.js";
 
@@ -515,10 +516,6 @@ export class Mesh {
   }
 
   private rotateChildBone(bone: Bone) {
-    if (bone === this.bones[27]) {
-      console.log(bone.localOffset.xyz);
-      console.log(bone.endpointLocal.xyz);
-    }
     bone.rotation = this.getDMat(bone, this.bones).toMat3().toQuat();
     bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
 
@@ -546,5 +543,70 @@ export class Mesh {
       this.rotateChildBone(childBone);
       childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
     }
+  }
+
+  // IK STUFF
+  public moveBone(distanceX: number, distanceY: number, bone: Bone, xAxis: Vec3, yAxis: Vec3) {
+    bone.position = bone.position.add(xAxis.copy().scale(distanceX));
+    bone.position = bone.position.add(yAxis.copy().scale(distanceY));
+    bone.tMat = this.setTMatrix(bone, this.bones); 
+    bone.uMat = this.setUMatrix(bone, this.bones);
+    bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
+    if (bone.parent != -1) {
+      bone.localOffset = bone.position.subtract(this.bones[bone.parent].endpoint, new Vec3());
+      if (bone.localOffset.length() < epsilon) {
+        bone.localOffset = new Vec3([0, 0, 0]);
+      }
+    }
+
+    for (let i = 0; i < bone.children.length; i++) {
+      let childBone = this.bones[bone.children[i]];
+      childBone.position = bone.endpoint.add(this.getDMat(bone, this.bones).multiplyVec3(childBone.localOffset), new Vec3);
+      this.moveChildBone(childBone);
+      childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
+    }
+  }
+
+  public moveChildBone(bone: Bone) {
+    bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
+
+    for (let i = 0; i < bone.children.length; i++) {
+      let childBone = this.bones[bone.children[i]];
+      childBone.position = bone.endpoint.add(this.getDMat(bone, this.bones).multiplyVec3(childBone.localOffset), new Vec3);
+      this.moveChildBone(childBone);
+      childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
+    }
+    
+  }
+
+  public fabrik(endEffector: Vec3, trueEnd: number, base: Vec3, bone: Bone) {
+    // Forward Pass
+    // let direction = endEffector.copy().subtract(this.bones[bone.parent].endpoint.copy().add(bone.localOffset)).normalize();
+    if (bone.parent != -1 && bone.children.length <= 1) {
+      // Has parent/not base, point from endEffector/end to previous position
+      let direction = this.bones[bone.parent].endpoint.copy().add(bone.localOffset).subtract(endEffector).normalize();
+      bone.position = endEffector.copy();
+      bone.endpoint = endEffector.copy().add(direction.scale(bone.getLength()));
+      this.fabrik(bone.endpoint, trueEnd, base, this.bones[bone.parent]);
+    } else {
+      // Base bone, point from last endEffector towards the base
+      let direction = base.copy().subtract(endEffector).normalize();
+      bone.position = endEffector.copy();
+      bone.endpoint = endEffector.copy().add(direction.scale(bone.getLength()));
+    }
+
+    // Backwards Pass
+    if (bone.parent == -1 || bone.children.length > 1) {
+      // Base
+      let direction = endEffector.copy().subtract(base).normalize();
+      bone.position = base.copy();
+      bone.endpoint = base.copy().add(direction.scale(bone.getLength()));
+    } else {
+      let direction = endEffector.copy().subtract(this.bones[bone.parent].endpoint.copy().add(bone.localOffset)).normalize();
+      bone.position = this.bones[bone.parent].endpoint.copy().add(bone.localOffset);
+      bone.endpoint = this.bones[bone.parent].endpoint.copy().add(bone.localOffset).add(direction.scale(bone.getLength()));
+    }
+
+    bone.cylinder.updatePositions(bone.position, bone.endpoint);
   }
 }

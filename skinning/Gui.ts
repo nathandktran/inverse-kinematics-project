@@ -62,6 +62,8 @@ export class GUI implements IGUI {
   public currentHighlightedFrame: number = -1;
   public clear: boolean = false;
 
+  public move: boolean = false;
+
 
   /**
    *
@@ -278,10 +280,24 @@ export class GUI implements IGUI {
         this.prevX = mouse.screenX;
         this.prevY = mouse.screenY;
         const boneList = this.animation.getScene().meshes[0].bones;
-        const bone = this.animation.getScene().meshes[0].bones[this.selectedBone];
-
-        this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * -dx, this.camera.forward(), bone);
-        this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * dy, this.camera.forward(), bone);
+        const bone = this.animation.getScene().meshes[0].bones[this.selectedBone]
+        
+        if (this.move) {
+          this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01, bone, this.camera.right(), this.camera.up());
+          let subBase = bone.parent;
+          let found = false;
+          while (subBase != 0 && !found) {
+            if (boneList[subBase].children.length > 1) {
+              found = true;
+            } else {
+              subBase = boneList[subBase].parent;
+            }
+          }
+          // this.animation.getScene().meshes[0].fabrik(bone.position, this.selectedBone, boneList[subBase].position, boneList[bone.parent]);
+        } else {
+          this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * -dx, this.camera.forward(), bone);
+          this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * dy, this.camera.forward(), bone);
+        }
         bone.cylinder.updatePositions(bone.position, bone.endpoint);
       }
     }
@@ -443,6 +459,16 @@ export class GUI implements IGUI {
         if (this.mode === Mode.edit && this.highlightedFrame != -1) {
           let boneCopy = this.animation.getScene().meshes[0].copyBones(this.animation.getScene().meshes[0].keyFrameList[this.highlightedFrame]);
           this.animation.getScene().meshes[0].bones = boneCopy;
+        }
+        break;
+      }
+      case "ControlLeft": {
+        if (this.move == false) {
+          this.move = true;
+          console.log("Move");
+        } else {
+          this.move = false;
+          console.log("Rotate");
         }
         break;
       }
