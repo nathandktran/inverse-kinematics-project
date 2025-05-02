@@ -616,5 +616,5 @@ export function initializeCanvas(): void {
   /* Start drawing */
   const canvasAnimation: SkinningAnimation = new SkinningAnimation(canvas);
   canvasAnimation.start();
-  canvasAnimation.setScene("./static/assets/skinning/split_cube.dae");
+  canvasAnimation.setScene("./static/assets/skinning/robot.dae");
 }

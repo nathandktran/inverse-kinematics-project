@@ -62,7 +62,7 @@ export class GUI implements IGUI {
   public currentHighlightedFrame: number = -1;
   public clear: boolean = false;
 
-  public move: boolean = false;
+  public move: boolean = true;
 
 
   /**
@@ -280,20 +280,27 @@ export class GUI implements IGUI {
         this.prevX = mouse.screenX;
         this.prevY = mouse.screenY;
         const boneList = this.animation.getScene().meshes[0].bones;
-        const bone = this.animation.getScene().meshes[0].bones[this.selectedBone]
+        const bone = this.animation.getScene().meshes[0].bones[this.selectedBone];
         
         if (this.move) {
           this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01, bone, this.camera.right(), this.camera.up());
-          let subBase = bone.parent;
-          let found = false;
-          while (subBase != 0 && !found) {
-            if (boneList[subBase].children.length > 1) {
-              found = true;
-            } else {
-              subBase = boneList[subBase].parent;
+          if (bone.parent != -1) {
+            let boneChain: number[] = [];
+            let currBone = bone.parent;
+            while (currBone != -1 && boneList[currBone].children.length <= 1) {
+              boneChain.push(currBone);
+              currBone = boneList[currBone].parent;
+            }
+      
+            let endEffector = bone.position;
+            let base = boneList[boneChain[boneChain.length - 1]].position;
+            for (let iter = 0; iter < 2; iter++) {
+              this.animation.getScene().meshes[0].fabrikForward(boneChain, endEffector, base);
+              boneChain.reverse();
+              this.animation.getScene().meshes[0].fabrikBackward(boneChain, base, endEffector);
+              boneChain.reverse();
             }
           }
-          // this.animation.getScene().meshes[0].fabrik(bone.position, this.selectedBone, boneList[subBase].position, boneList[bone.parent]);
         } else {
           this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * -dx, this.camera.forward(), bone);
           this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * dy, this.camera.forward(), bone);
@@ -332,11 +339,11 @@ export class GUI implements IGUI {
   public onKeydown(key: KeyboardEvent): void {
     switch (key.code) {
       case "Digit1": {
-        this.animation.setScene("./static/assets/skinning/split_cube.dae");
+        this.animation.setScene("./static/assets/skinning/robot.dae");
         break;
       }
       case "Digit2": {
-        this.animation.setScene("./static/assets/skinning/long_cubes.dae");
+        this.animation.setScene("./static/assets/skinning/wolf.dae");
         break;
       }
       case "Digit3": {
@@ -349,7 +356,7 @@ export class GUI implements IGUI {
         break;
       }
       case "Digit5": {
-        this.animation.setScene("./static/assets/skinning/robot.dae");
+        this.animation.setScene("./static/assets/skinning/split_cube.dae");
         break;
       }
       case "Digit6": {
@@ -357,7 +364,7 @@ export class GUI implements IGUI {
         break;
       }
       case "Digit7": {
-        this.animation.setScene("./static/assets/skinning/wolf.dae");
+        this.animation.setScene("./static/assets/skinning/long_cubes.dae");
         break;
       }
       case "Digit8": {
