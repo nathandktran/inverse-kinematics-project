@@ -106,6 +106,7 @@ export class Bone {
   public tMat: Mat4;
   public localRot: Mat4;
   public localOffset: Vec3;
+  public length: number;
 
   constructor(bone: BoneLoader | Bone) {
     this.parent = bone.parent;
@@ -118,6 +119,7 @@ export class Bone {
     this.rMat = new Mat4().setIdentity();
     this.localRot = new Mat4().setIdentity();
     this.uMat = null;
+    this.length = this.getLength();
   }
 
   public getLength(): number {
@@ -611,24 +613,24 @@ export class Mesh {
     // Traverse bones in the chain, updating positions and rotations
     for (let i = 0; i < boneChain.length - 1; i++) {
       let currBone = this.bones[boneChain[i]];
-      let parentBone = this.bones[currBone.parent];
+      let parentBone = this.bones[boneChain[i + 1]];
       
       // Direction from current bone to target (end effector)
-      let direction = parentBone.endpoint.copy().add(currBone.localOffset).subtract(endEffector).normalize();
+      let direction = parentBone.endpoint.copy().subtract(endEffector).normalize();
       
       // Update position and endpoint of the bone
       currBone.position = endEffector.copy();
-      currBone.endpoint = endEffector.copy().add(direction.scale(currBone.getLength()));
+      currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
 
       // Move the end effector to the current bone's endpoint
-      endEffector = currBone.endpoint.copy().subtract(currBone.localOffset);
+      endEffector = currBone.endpoint.copy();
     }
 
     // Final bone update
-    let direction = base.copy().subtract(endEffector);
+    let direction = base.copy().subtract(endEffector).normalize();
     let currBone = this.bones[boneChain[boneChain.length - 1]];
     currBone.position = endEffector.copy();
-    currBone.endpoint = endEffector.copy().add(direction.scale(currBone.getLength()));
+    currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
   }
 
   // Backward pass
@@ -638,32 +640,38 @@ export class Mesh {
     // Traverse bones in reverse order, updating positions and rotations
     for (let i = 0; i < boneChain.length - 1; i++) {
       let currBone = this.bones[boneChain[i]];
-      let childBone = this.bones[currBone.children[0]];
+      let childBone = this.bones[boneChain[i + 1]];
       
       // Direction from current bone to target (end effector)
-      let direction = childBone.endpoint.copy().add(childBone.localOffset).subtract(endEffector).normalize();
+      let direction = childBone.endpoint.copy().subtract(endEffector).normalize();
 
       // Update position and endpoint of the bone
       currBone.position = endEffector.copy();
-      currBone.endpoint = endEffector.copy().add(direction.scale(currBone.getLength()));
+      currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
+      currBone.tMat = this.setTMatrix(currBone, this.bones); 
+      currBone.uMat = this.setUMatrix(currBone, this.bones);
 
       // Update rotation matrix based on new direction
       this.updateFrame(currBone, direction);
 
       // Move the end effector to the current bone's endpoint
-      endEffector = currBone.endpoint.copy().add(childBone.localOffset);
+      endEffector = currBone.endpoint.copy();
     }
 
     // Final bone update
-    let direction = base.copy().subtract(endEffector);
+    let direction = base.copy().subtract(endEffector).normalize();
     let currBone = this.bones[boneChain[boneChain.length - 1]];
     currBone.position = endEffector.copy();
-    currBone.endpoint = endEffector.copy().add(direction.scale(currBone.getLength()));
+    currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
+    currBone.tMat = this.setTMatrix(currBone, this.bones); 
+    currBone.uMat = this.setUMatrix(currBone, this.bones);
     this.updateFrame(currBone, direction);
   }
 
   // Update rotation based on the new direction
   public updateFrame(bone: Bone, direction: Vec3) {
+    // Update endpoints
+    bone.cylinder.updatePositions(bone.position, bone.endpoint);
     // Get the rest pose direction (in local space)
     let restDirection = bone.endpointLocal.normalize();
 
@@ -695,8 +703,10 @@ export class Mesh {
 
     // Store rotation quaternion and build the rotation matrix
     bone.rotation = rotationQuat;
-    // let jointToEnd = bone.endpoint.subtract(bone.position, new Vec3());
-    // let rotatedJointToEnd = jointToEnd.multiplyByQuat(rotationQuat, new Vec3());
-    // bone.endpoint = bone.position.add(rotatedJointToEnd, new Vec3());
+  }
+
+  public getWorldRotation(bone: Bone): Mat4 {
+    if (bone.parent === -1) return bone.rMat;
+    return this.getWorldRotation(this.bones[bone.parent]).multiply(bone.rMat);
   }
 }
