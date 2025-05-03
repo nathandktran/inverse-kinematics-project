@@ -555,38 +555,15 @@ export class Mesh {
   public moveBone(distanceX: number, distanceY: number, bone: Bone, xAxis: Vec3, yAxis: Vec3, maxLength: number, base: Vec3) {
     let projected = bone.position.copy().add(xAxis.copy().scale(distanceX));
     projected.add(yAxis.copy().scale(distanceY));
-    if (bone.parent != -1) {
-      if (Math.abs(Vec3.distance(projected, base)) <= maxLength) {
-        bone.position = projected;
-      }
-    } else {
-      bone.position = projected;
+    if (Math.abs(Vec3.distance(projected, base)) <= maxLength + 100000) {
+      return projected;
     }
-    
-    bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
-
-    for (let i = 0; i < bone.children.length; i++) {
-      let childBone = this.bones[bone.children[i]];
-      childBone.position = bone.endpoint.add(this.getDMat(bone, this.bones).multiplyVec3(childBone.localOffset), new Vec3);
-      this.moveChildBone(childBone);
-      childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
-    }
-  }
-
-  public moveChildBone(bone: Bone) {
-    bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
-
-    for (let i = 0; i < bone.children.length; i++) {
-      let childBone = this.bones[bone.children[i]];
-      childBone.position = bone.endpoint.add(this.getDMat(bone, this.bones).multiplyVec3(childBone.localOffset), new Vec3);
-      this.moveChildBone(childBone);
-      childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
-    }
+    return null;
   }
 
   // Forward pass
   public fabrikForward(boneChain: number[], endEffectorInit: Vec3, base: Vec3) {
-    let endEffector = endEffectorInit;
+    let endEffector = endEffectorInit.copy();
     
     // Traverse bones in the chain, updating positions and rotations
     for (let i = 0; i < boneChain.length - 1; i++) {
@@ -594,26 +571,26 @@ export class Mesh {
       let parentBone = this.bones[boneChain[i + 1]];
       
       // Direction from current bone to target (end effector)
-      let direction = parentBone.endpoint.copy().subtract(endEffector).normalize();
+      let direction = parentBone.fabrikEnd.copy().subtract(endEffector).normalize();
       
       // Update position and endpoint of the bone
-      currBone.position = endEffector.copy();
-      currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
+      currBone.fabrikStart = endEffector.copy();
+      currBone.fabrikEnd = endEffector.copy().add(direction.scale(currBone.length));
 
       // Move the end effector to the current bone's endpoint
-      endEffector = currBone.endpoint.copy();
+      endEffector = currBone.fabrikEnd.copy();
     }
 
     // Final bone update
     let direction = base.copy().subtract(endEffector).normalize();
     let currBone = this.bones[boneChain[boneChain.length - 1]];
-    currBone.position = endEffector.copy();
-    currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
+    currBone.fabrikStart = endEffector.copy();
+    currBone.fabrikEnd = endEffector.copy().add(direction.scale(currBone.length));
   }
 
   // Backward pass
   public fabrikBackward(boneChain: number[], endEffectorInit: Vec3, base: Vec3) {
-    let endEffector = endEffectorInit;
+    let endEffector = endEffectorInit.copy();
 
     // Traverse bones in reverse order, updating positions and rotations
     for (let i = 0; i < boneChain.length - 1; i++) {
@@ -621,34 +598,31 @@ export class Mesh {
       let childBone = this.bones[boneChain[i + 1]];
       
       // Direction from current bone to target (end effector)
-      let direction = childBone.endpoint.copy().subtract(endEffector).normalize();
+      let direction = childBone.fabrikEnd.copy().subtract(endEffector).normalize();
 
       // Update position and endpoint of the bone
-      currBone.position = endEffector.copy();
-      currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
+      currBone.fabrikStart = endEffector.copy();
+      currBone.fabrikEnd = endEffector.copy().add(direction.scale(currBone.length));
 
       // Update rotation matrix based on new direction
       this.updateFrame(currBone, direction);
 
       // Move the end effector to the current bone's endpoint
-      endEffector = currBone.endpoint.copy();
+      endEffector = currBone.fabrikEnd.copy();
     }
 
     // Final bone update
     let direction = base.copy().subtract(endEffector).normalize();
     let currBone = this.bones[boneChain[boneChain.length - 1]];
-    currBone.position = endEffector.copy();
-    currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
+    currBone.fabrikStart = endEffector.copy();
+    currBone.fabrikEnd = endEffector.copy().add(direction.scale(currBone.length));
     this.updateFrame(currBone, direction);
   }
 
   // Update rotation based on the new direction
   public updateFrame(bone: Bone, direction: Vec3) {
-    // Update endpoints
-    bone.cylinder.updatePositions(bone.position, bone.endpoint);
-
     // Get the rest pose direction
-    let restDirection = bone.endpointLocal.normalize();
+    let restDirection = bone.endpointLocal.copy().normalize();
 
     // Calculate the target direction from current position to endpoint
     let targetDirection = direction.normalize();
@@ -679,9 +653,9 @@ export class Mesh {
     if (bone.parent != -1) {
       const parentRot = this.getWorldRotation(this.bones[bone.parent]);
       const parentRotInv = parentRot.inverse();
-      bone.rMat = parentRotInv.multiply(rotationQuat.toMat4());
+      bone.rMat = parentRotInv.copy().multiply(rotationQuat.toMat4());
     } else {
-      bone.rMat = rotationQuat.toMat4();
+      bone.rMat = rotationQuat.copy().toMat4();
     }
   }
 
@@ -696,5 +670,31 @@ export class Mesh {
     const parentMat = this.getWorldRotation(this.bones[bone.parent]);
     const inverseParent = parentMat.inverse();
     bone.rMat = inverseParent;
+  }
+
+  public fixChain(bone: Bone) {
+    bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
+    // bone.endpoint = bone.fabrikEnd;
+    bone.cylinder.updatePositions(bone.position, bone.endpoint);
+
+    // Rotate children
+    for (let i = 0; i < bone.children.length; i++) {
+      let childBone = this.bones[bone.children[i]];
+      childBone.position = bone.endpoint.add(this.getDMat(bone, this.bones).multiplyVec3(childBone.localOffset), new Vec3);
+      this.fixChainChild(childBone);
+      childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
+    }
+  }
+
+  private fixChainChild(bone: Bone) {
+    bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
+
+    // Update children
+    bone.children.forEach(childIndex => {
+      let childBone = this.bones[childIndex];
+      childBone.position = bone.endpoint.add(this.getDMat(bone, this.bones).multiplyVec3(childBone.localOffset), new Vec3);
+      this.fixChainChild(childBone);
+      childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
+    });
   }
 }

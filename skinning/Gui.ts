@@ -293,16 +293,18 @@ export class GUI implements IGUI {
               length += boneList[currBone].length;
               currBone = boneList[currBone].parent;
             }
-            let endEffector = bone.position;
             let base = boneList[boneChain[boneChain.length - 1]].position;
-            this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01, bone, this.camera.right(), this.camera.up(), length, base);
-            for (let iter = 0; iter < 2; iter++) {
-              this.animation.getScene().meshes[0].fabrikForward(boneChain, endEffector, base);
-              boneChain.reverse();
-              this.animation.getScene().meshes[0].fabrikBackward(boneChain, base, endEffector);
-              boneChain.reverse();
+            let endEffector = this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01, bone, this.camera.right(), this.camera.up(), length, base);
+            if (endEffector != null) {
+              for (let iter = 0; iter < 2; iter++) {
+                this.animation.getScene().meshes[0].fabrikForward(boneChain, endEffector, base);
+                boneChain.reverse();
+                this.animation.getScene().meshes[0].fabrikBackward(boneChain, base, endEffector);
+                boneChain.reverse();
+              }
+              this.animation.getScene().meshes[0].fixRMat(bone);
+              this.animation.getScene().meshes[0].fixChain(boneList[boneChain[boneChain.length - 1]]);
             }
-            this.animation.getScene().meshes[0].fixRMat(bone);
           }
         } else {
           this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * -dx, this.camera.forward(), bone);
