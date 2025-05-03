@@ -104,9 +104,10 @@ export class Bone {
   public uMat: Mat4 | null;
   public rMat: Mat4;
   public tMat: Mat4;
-  public localRot: Mat4;
   public localOffset: Vec3;
   public length: number;
+  public fabrikStart: Vec3;
+  public fabrikEnd: Vec3;
 
   constructor(bone: BoneLoader | Bone) {
     this.parent = bone.parent;
@@ -117,9 +118,10 @@ export class Bone {
     this.cylinder = new Cylinder(this.position, this.endpoint);
     this.endpointLocal = this.endpoint.subtract(this.position, new Vec3());
     this.rMat = new Mat4().setIdentity();
-    this.localRot = new Mat4().setIdentity();
     this.uMat = null;
     this.length = this.getLength();
+    this.fabrikStart = this.position.copy();
+    this.fabrikEnd = this.endpoint.copy();
   }
 
   public getLength(): number {
@@ -550,42 +552,18 @@ export class Mesh {
   }
 
   // IK STUFF
-  public moveBoneOld(distanceX: number, distanceY: number, bone: Bone, xAxis: Vec3, yAxis: Vec3) {
-    bone.position = bone.position.add(xAxis.copy().scale(distanceX));
-    bone.position = bone.position.add(yAxis.copy().scale(distanceY));
-    bone.endpoint = bone.endpoint.add(xAxis.copy().scale(distanceX));
-    bone.endpoint = bone.endpoint.add(yAxis.copy().scale(distanceY));
-
-    for (let i = 0; i < bone.children.length; i++) {
-      let childBone = this.bones[bone.children[i]];
-      this.moveBoneOld(distanceX, distanceY, childBone, xAxis, yAxis);
-      childBone.cylinder.updatePositions(childBone.position, childBone.endpoint);
-    }
-  }
-
-  public moveBone(distanceX: number, distanceY: number, bone: Bone, xAxis: Vec3, yAxis: Vec3) {
+  public moveBone(distanceX: number, distanceY: number, bone: Bone, xAxis: Vec3, yAxis: Vec3, maxLength: number, base: Vec3) {
     let projected = bone.position.copy().add(xAxis.copy().scale(distanceX));
     projected.add(yAxis.copy().scale(distanceY));
     if (bone.parent != -1) {
-      // let restDistance = bone.position.copy().subtract(this.bones[bone.parent].position).length();
-      // let projectedDistance = projected.copy().subtract(this.bones[bone.parent].position).length();
-      // if (Math.abs(projectedDistance - restDistance) <= 0.01) {
-      //   bone.position = projected;
-      // }
-      bone.position = projected;
+      if (Math.abs(Vec3.distance(projected, base)) <= maxLength) {
+        bone.position = projected;
+      }
     } else {
       bone.position = projected;
     }
     
-    bone.tMat = this.setTMatrix(bone, this.bones); 
-    bone.uMat = this.setUMatrix(bone, this.bones);
     bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
-    if (bone.parent != -1) {
-      bone.localOffset = bone.position.subtract(this.bones[bone.parent].endpoint, new Vec3());
-      if (bone.localOffset.length() < epsilon) {
-        bone.localOffset = new Vec3([0, 0, 0]);
-      }
-    }
 
     for (let i = 0; i < bone.children.length; i++) {
       let childBone = this.bones[bone.children[i]];
@@ -648,8 +626,6 @@ export class Mesh {
       // Update position and endpoint of the bone
       currBone.position = endEffector.copy();
       currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
-      currBone.tMat = this.setTMatrix(currBone, this.bones); 
-      currBone.uMat = this.setUMatrix(currBone, this.bones);
 
       // Update rotation matrix based on new direction
       this.updateFrame(currBone, direction);
@@ -663,8 +639,6 @@ export class Mesh {
     let currBone = this.bones[boneChain[boneChain.length - 1]];
     currBone.position = endEffector.copy();
     currBone.endpoint = endEffector.copy().add(direction.scale(currBone.length));
-    currBone.tMat = this.setTMatrix(currBone, this.bones); 
-    currBone.uMat = this.setUMatrix(currBone, this.bones);
     this.updateFrame(currBone, direction);
   }
 
@@ -672,18 +646,17 @@ export class Mesh {
   public updateFrame(bone: Bone, direction: Vec3) {
     // Update endpoints
     bone.cylinder.updatePositions(bone.position, bone.endpoint);
-    // Get the rest pose direction (in local space)
+
+    // Get the rest pose direction
     let restDirection = bone.endpointLocal.normalize();
 
     // Calculate the target direction from current position to endpoint
     let targetDirection = direction.normalize();
-
-    // Calculate the dot product (for angle determination)
     const dot = Vec3.dot(restDirection, targetDirection);
 
     let rotationQuat: Quat;
 
-    // If the vectors are nearly identical, no rotation needed
+    // Calculate rotation
     if (dot > 1.0 - epsilon) {
       rotationQuat = Quat.identity;
     } else if (dot < -1.0 + epsilon) {
@@ -703,10 +676,25 @@ export class Mesh {
 
     // Store rotation quaternion and build the rotation matrix
     bone.rotation = rotationQuat;
+    if (bone.parent != -1) {
+      const parentRot = this.getWorldRotation(this.bones[bone.parent]);
+      const parentRotInv = parentRot.inverse();
+      bone.rMat = parentRotInv.multiply(rotationQuat.toMat4());
+    } else {
+      bone.rMat = rotationQuat.toMat4();
+    }
   }
 
+  // Get the total rotation of a bone from parent's rMats
   public getWorldRotation(bone: Bone): Mat4 {
-    if (bone.parent === -1) return bone.rMat;
+    if (bone.parent == -1) return bone.rMat.copy();
     return this.getWorldRotation(this.bones[bone.parent]).multiply(bone.rMat);
+  }
+
+  // Fix the RMat of the end effector bone because its rotation shouldn't have changed
+  public fixRMat(bone: Bone) {
+    const parentMat = this.getWorldRotation(this.bones[bone.parent]);
+    const inverseParent = parentMat.inverse();
+    bone.rMat = inverseParent;
   }
 }

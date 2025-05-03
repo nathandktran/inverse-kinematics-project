@@ -283,23 +283,26 @@ export class GUI implements IGUI {
         const bone = this.animation.getScene().meshes[0].bones[this.selectedBone];
         
         if (this.move) {
-          this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01, bone, this.camera.right(), this.camera.up());
+          // IK
           if (bone.parent != -1) {
             let boneChain: number[] = [];
+            let length = 0;
             let currBone = bone.parent;
             while (currBone != -1 && boneList[currBone].children.length <= 1) {
               boneChain.push(currBone);
+              length += boneList[currBone].length;
               currBone = boneList[currBone].parent;
             }
-      
             let endEffector = bone.position;
             let base = boneList[boneChain[boneChain.length - 1]].position;
+            this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01, bone, this.camera.right(), this.camera.up(), length, base);
             for (let iter = 0; iter < 2; iter++) {
               this.animation.getScene().meshes[0].fabrikForward(boneChain, endEffector, base);
               boneChain.reverse();
               this.animation.getScene().meshes[0].fabrikBackward(boneChain, base, endEffector);
               boneChain.reverse();
             }
+            this.animation.getScene().meshes[0].fixRMat(bone);
           }
         } else {
           this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * -dx, this.camera.forward(), bone);
