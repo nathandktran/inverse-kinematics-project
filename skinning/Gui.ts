@@ -285,6 +285,7 @@ export class GUI implements IGUI {
         if (this.move) {
           // IK
           if (bone.parent != -1) {
+            // Create bone chain
             let boneChain: number[] = [];
             let length = 0;
             let currBone = bone.parent;
@@ -293,20 +294,27 @@ export class GUI implements IGUI {
               length += boneList[currBone].length;
               currBone = boneList[currBone].parent;
             }
+            
+            // Set base and end effector locations
             let base = boneList[boneChain[boneChain.length - 1]].position;
-            let endEffector = this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01, bone, this.camera.right(), this.camera.up(), length, base);
+            let endEffector = this.animation.getScene().meshes[0].moveBone(dx * 0.01, -1 * dy * 0.01,
+                bone, this.camera.right(), this.camera.up(), length, base);
             if (endEffector != null) {
+              // Run FABRIK for x iterations
               for (let iter = 0; iter < 2; iter++) {
                 this.animation.getScene().meshes[0].fabrikForward(boneChain, endEffector, base);
                 boneChain.reverse();
                 this.animation.getScene().meshes[0].fabrikBackward(boneChain, base, endEffector);
                 boneChain.reverse();
               }
+
+              // Update the bone's R Mat and the chain's positions
               this.animation.getScene().meshes[0].fixRMat(bone);
               this.animation.getScene().meshes[0].fixChain(boneList[boneChain[boneChain.length - 1]]);
             }
           }
         } else {
+          // Rotation
           this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * -dx, this.camera.forward(), bone);
           this.animation.getScene().meshes[0].rotateBoneOnAxis(GUI.rotationSpeed * dy, this.camera.forward(), bone);
         }
@@ -354,28 +362,7 @@ export class GUI implements IGUI {
       case "Digit3": {
         this.animation.setScene("./static/assets/skinning/simple_art.dae");
         break;
-      }      
-      case "Digit4": {
-        this.animation.setScene("./static/assets/skinning/mapped_cube.dae");
-        // this.animation.loadTexture("./static/assets/skinning/minecraft_tree_wood.jpg");
-        break;
-      }
-      case "Digit5": {
-        this.animation.setScene("./static/assets/skinning/split_cube.dae");
-        break;
-      }
-      case "Digit6": {
-        this.animation.setScene("./static/assets/skinning/head.dae");
-        break;
-      }
-      case "Digit7": {
-        this.animation.setScene("./static/assets/skinning/long_cubes.dae");
-        break;
-      }
-      case "Digit8": {
-        this.animation.setScene("./static/assets/skinning/prince2.dae");
-        break;
-      }
+      }     
       case "KeyW": {
         this.camera.offset(
             this.camera.forward().negate(),

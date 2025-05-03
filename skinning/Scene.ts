@@ -552,13 +552,11 @@ export class Mesh {
   }
 
   // IK STUFF
+  // Move End Effector
   public moveBone(distanceX: number, distanceY: number, bone: Bone, xAxis: Vec3, yAxis: Vec3, maxLength: number, base: Vec3) {
     let projected = bone.position.copy().add(xAxis.copy().scale(distanceX));
     projected.add(yAxis.copy().scale(distanceY));
-    if (Math.abs(Vec3.distance(projected, base)) <= maxLength + 100000) {
-      return projected;
-    }
-    return null;
+    return projected;
   }
 
   // Forward pass
@@ -669,12 +667,12 @@ export class Mesh {
   public fixRMat(bone: Bone) {
     const parentMat = this.getWorldRotation(this.bones[bone.parent]);
     const inverseParent = parentMat.inverse();
-    bone.rMat = inverseParent;
+    bone.rMat = inverseParent.multiply(bone.rotation.toMat4());
   }
 
+  // Update the positions of the children in the chain based on the new R Mats 
   public fixChain(bone: Bone) {
     bone.endpoint = this.getDMat(bone, this.bones).multiplyPt3(bone.endpointLocal);
-    // bone.endpoint = bone.fabrikEnd;
     bone.cylinder.updatePositions(bone.position, bone.endpoint);
 
     // Rotate children
